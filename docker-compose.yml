@@ -1,0 +1,61 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+    container_name: sentinelforge-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      WATCHPACK_POLLING: "true"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+    container_name: sentinelforge-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sentinelforge:sentinelforge@postgres:5432/sentinelforge
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition:  service_started
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: sentinelforge-postgres
+    environment:
+      POSTGRES_USER: sentinelforge
+      POSTGRES_PASSWORD: sentinelforge
+      POSTGRES_DB: sentinelforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinelforge -d sentinelforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    container_name: sentinelforge-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+  
+volumes:
+  postgres_data:
+  redis_data:

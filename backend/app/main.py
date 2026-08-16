@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.routes.auth import router as auth_router
 from app.db.dependencies import get_db
 from app.db.health import check_database
 from app.services.redis import check_redis
@@ -20,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 
 @app.get("/health")
 async def health(db: AsyncSession = Depends(get_db)):

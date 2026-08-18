@@ -22,7 +22,6 @@ router = APIRouter(
     tags=["Authentication"],
 )
 
-
 @router.post(
     "/register",
     response_model=UserResponse,

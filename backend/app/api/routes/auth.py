@@ -22,6 +22,7 @@ router = APIRouter(
     tags=["Authentication"],
 )
 
+from app.auth.permissions import require_role
 
 @router.post(
     "/register",
@@ -79,3 +80,14 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+@router.get("/admin-test")
+async def admin_test(
+    current_user: User = Depends(require_role("admin")),
+):
+    return {
+        "message": "Admin access granted",
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "role": current_user.role,
+    }

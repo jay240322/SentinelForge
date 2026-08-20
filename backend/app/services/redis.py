@@ -14,3 +14,20 @@ async def check_redis() -> bool:
         return await redis_client.ping()
     except redis.RedisError:
         return False
+
+async def revoke_refresh_token(
+    token: str,
+    expires_in: int,
+) -> None:
+    await redis_client.set(
+        f"revoked_refresh_token:{token}",
+        "revoked",
+        ex=expires_in,
+    )
+
+async def is_refresh_token_revoked(token: str) -> bool:
+    result = await redis_client.exists(
+        f"revoked_refresh_token:{token}"
+    )
+
+    return result == 1

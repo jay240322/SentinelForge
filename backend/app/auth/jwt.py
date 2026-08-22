@@ -67,7 +67,7 @@ def get_token_remaining_seconds(token: str) -> int | None:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT__SECRET_KEY,
+            settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
 

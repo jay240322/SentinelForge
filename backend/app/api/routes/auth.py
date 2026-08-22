@@ -26,7 +26,10 @@ from app.schemas.auth import (
 )
 
 from app.auth.jwt import get_token_remaining_seconds
-from app.services.redis import revoke_refresh_token
+from app.services.redis import (
+    is_refresh_token_revoked,
+    revoke_refresh_token,
+)
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -107,6 +110,12 @@ async def refresh_access_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
+        )
+
+    if await is_refresh_token_revoked(request.refresh_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
         )
 
     access_token = create_access_token(user_id)

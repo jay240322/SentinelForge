@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.jwt import decode_email_verification_token
+from sqlalchemy import select
+
 from app.auth.dependencies import get_current_user
 from app.auth.jwt import (
     create_access_token,
@@ -23,6 +26,7 @@ from app.schemas.auth import (
     TokenResponse,
     RegisterRequest,
     UserResponse,
+    EmailVerificationRequest,
 )
 
 from app.auth.jwt import get_token_remaining_seconds
@@ -146,3 +150,38 @@ async def logout(
         token=request.refresh_token,
         expires_in=remaining_seconds,
     )
+
+@router.post(
+    "/verify-email",
+    response_model=UserResponse,
+)
+async def verify_email(
+    request: EmailVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = decode_email_verification_token(request.token)
+
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired verification token",
+        )
+
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.is_verified = True
+
+    await db.commit()
+    await db.refresh(user)
+
+    return user

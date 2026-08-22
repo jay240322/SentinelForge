@@ -6,6 +6,7 @@ from app.auth.jwt import (
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
+    get_token_remaining_seconds,
 )
 from app.auth.service import (
     InvalidCredentialsError,
@@ -24,6 +25,11 @@ from app.schemas.auth import (
     UserResponse,
 )
 
+from app.auth.jwt import get_token_remaining_seconds
+from app.services.redis import (
+    is_refresh_token_revoked,
+    revoke_refresh_token,
+)
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -106,9 +112,37 @@ async def refresh_access_token(
             detail="Invalid or expired refresh token",
         )
 
+    if await is_refresh_token_revoked(request.refresh_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+        )
+
     access_token = create_access_token(user_id)
 
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
+    )
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def logout(
+    request: RefreshTokenRequest,
+):
+    remaining_seconds = get_token_remaining_seconds(
+        request.refresh_token
+    )
+
+    if remaining_seconds is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    await revoke_refresh_token(
+        token=request.refresh_token,
+        expires_in=remaining_seconds,
     )

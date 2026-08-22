@@ -62,3 +62,27 @@ def decode_refresh_token(token: str) -> int | None:
 
     except (jwt.PyJWTError, ValueError):
         return None
+
+def get_token_remaining_seconds(token: str) -> int | None:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+
+        exp = payload.get("exp")
+
+        if exp is None:
+            return None
+
+        now = datetime.now(timezone.utc).timestamp()
+        remaining_seconds = int(exp - now)
+
+        if remaining_seconds <= 0:
+            return None
+
+        return remaining_seconds
+
+    except jwt.PyJWTError:
+        return None

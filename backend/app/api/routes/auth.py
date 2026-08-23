@@ -13,7 +13,10 @@ from app.auth.jwt import (
     decode_refresh_token,
     get_token_remaining_seconds,
 )
-from app.auth.security import hash_password
+from app.auth.security import (
+    hash_password,
+    verify_password,
+)
 from app.auth.service import (
     InvalidCredentialsError,
     UserAlreadyExistsError,
@@ -23,6 +26,7 @@ from app.auth.service import (
 from app.db.dependencies import get_db
 from app.models import User
 from app.schemas.auth import (
+    ChangePasswordRequest,
     EmailVerificationRequest,
     ForgotPasswordRequest,
     LoginRequest,
@@ -258,4 +262,31 @@ async def reset_password(
 
     return {
         "message": "Password reset successful",
+    }
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    password_is_valid = verify_password(
+        request.current_password,
+        current_user.password_hash,
+    )
+
+    if not password_is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(
+        request.new_password
+    )
+
+    await db.commit()
+
+    return {
+        "message": "Password changed successfully",
     }

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +51,11 @@ router = APIRouter(
 )
 
 
+MAX_FAILED_ATTEMPTS = 5
+LOCK_DURATION_MINUTES = 15
+
+# REGISTER
+
 @router.post(
     "/register",
     response_model=UserResponse,
@@ -64,12 +71,15 @@ async def register(
             email=request.email,
             password=request.password,
         )
+
     except UserAlreadyExistsError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
 
+
+# LOGIN WITH BRUTE-FORCE PROTECTION
 
 @router.post(
     "/login",
@@ -79,18 +89,93 @@ async def login(
     request: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    # Find the user first
+    result = await db.execute(
+        select(User).where(User.email == request.email)
+    )
+    existing_user = result.scalar_one_or_none()
+
+    
+    # Check whether the account is currently locked
+    
+    if (
+        existing_user is not None
+        and existing_user.locked_until is not None
+    ):
+        now = datetime.now()
+
+        if existing_user.locked_until > now:
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail=(
+                    "Account is temporarily locked. "
+                    "Please try again later."
+                ),
+            )
+
+        # Lock period has expired
+        existing_user.locked_until = None
+        existing_user.failed_login_attempts = 0
+
+        await db.commit()
+
+    
+    # Authenticate the user
+    
     try:
         user = await authenticate_user(
             db=db,
             email=request.email,
             password=request.password,
         )
+
     except InvalidCredentialsError:
+
+        # Only track failed attempts if the user exists
+        if existing_user is not None:
+
+            existing_user.failed_login_attempts += 1
+
+            # Lock account after 5 failed attempts
+            
+            if (
+                existing_user.failed_login_attempts
+                >= MAX_FAILED_ATTEMPTS
+            ):
+                existing_user.locked_until = (
+                    datetime.now()
+                    + timedelta(minutes=LOCK_DURATION_MINUTES)
+                )
+
+                await db.commit()
+
+                raise HTTPException(
+                    status_code=status.HTTP_423_LOCKED,
+                    detail=(
+                        "Too many failed login attempts. "
+                        "Account locked for 15 minutes."
+                    ),
+                )
+
+            # Save failed attempt count
+            await db.commit()
+
+        # Wrong credentials
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Successful login: reset failed attempts
+    if (
+        user.failed_login_attempts != 0
+        or user.locked_until is not None
+    ):
+        user.failed_login_attempts = 0
+        user.locked_until = None
+
+        await db.commit()
 
     return LoginResponse(
         access_token=create_access_token(user.id),
@@ -98,6 +183,7 @@ async def login(
         token_type="bearer",
     )
 
+# CURRENT USER
 
 @router.get(
     "/me",
@@ -108,6 +194,7 @@ async def get_me(
 ):
     return current_user
 
+# REFRESH ACCESS TOKEN
 
 @router.post(
     "/refresh",
@@ -116,7 +203,9 @@ async def get_me(
 async def refresh_access_token(
     request: RefreshTokenRequest,
 ):
-    user_id = decode_refresh_token(request.refresh_token)
+    user_id = decode_refresh_token(
+        request.refresh_token
+    )
 
     if user_id is None:
         raise HTTPException(
@@ -124,7 +213,9 @@ async def refresh_access_token(
             detail="Invalid or expired refresh token",
         )
 
-    if await is_refresh_token_revoked(request.refresh_token):
+    if await is_refresh_token_revoked(
+        request.refresh_token
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
@@ -137,6 +228,7 @@ async def refresh_access_token(
         token_type="bearer",
     )
 
+# LOGOUT
 
 @router.post(
     "/logout",
@@ -160,6 +252,7 @@ async def logout(
         expires_in=remaining_seconds,
     )
 
+# VERIFY EMAIL
 
 @router.post(
     "/verify-email",
@@ -169,7 +262,9 @@ async def verify_email(
     request: EmailVerificationRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = decode_email_verification_token(request.token)
+    user_id = decode_email_verification_token(
+        request.token
+    )
 
     if user_id is None:
         raise HTTPException(
@@ -180,7 +275,6 @@ async def verify_email(
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
-
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -196,6 +290,7 @@ async def verify_email(
 
     return user
 
+# FORGOT PASSWORD
 
 @router.post(
     "/forgot-password",
@@ -207,14 +302,15 @@ async def forgot_password(
     result = await db.execute(
         select(User).where(User.email == request.email)
     )
-
     user = result.scalar_one_or_none()
 
     if user is not None:
-        reset_token = create_password_reset_token(user.id)
+        reset_token = create_password_reset_token(
+            user.id
+        )
 
         # Email sending will be added later.
-        # For now, return the token so we can test the flow.
+        # For now, return the token for testing.
         return {
             "message": "Password reset token generated",
             "reset_token": reset_token,
@@ -222,10 +318,12 @@ async def forgot_password(
 
     return {
         "message": (
-            "If the email exists, a password reset link will be sent"
+            "If the email exists, "
+            "a password reset link will be sent"
         ),
     }
 
+# RESET PASSWORD
 
 @router.post(
     "/reset-password",
@@ -234,7 +332,9 @@ async def reset_password(
     request: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = decode_password_reset_token(request.token)
+    user_id = decode_password_reset_token(
+        request.token
+    )
 
     if user_id is None:
         raise HTTPException(
@@ -245,7 +345,6 @@ async def reset_password(
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
-
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -263,6 +362,8 @@ async def reset_password(
     return {
         "message": "Password reset successful",
     }
+
+# CHANGE PASSWORD
 
 @router.post("/change-password")
 async def change_password(

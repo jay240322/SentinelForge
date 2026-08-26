@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ from app.auth.service import (
     authenticate_user,
     register_user,
 )
+from app.core.limiter import limiter
 from app.db.dependencies import get_db
 from app.models import User
 from app.schemas.auth import (
@@ -54,6 +55,7 @@ router = APIRouter(
 MAX_FAILED_ATTEMPTS = 5
 LOCK_DURATION_MINUTES = 15
 
+
 # REGISTER
 
 @router.post(
@@ -79,25 +81,28 @@ async def register(
         )
 
 
-# LOGIN WITH BRUTE-FORCE PROTECTION
+# LOGIN WITH BRUTE-FORCE PROTECTION + RATE LIMITING
 
 @router.post(
     "/login",
     response_model=LoginResponse,
 )
+@limiter.limit("100/minute")
 async def login(
-    request: LoginRequest,
+    request: Request,
+    login_request: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
     # Find the user first
     result = await db.execute(
-        select(User).where(User.email == request.email)
+        select(User).where(
+            User.email == login_request.email
+        )
     )
+
     existing_user = result.scalar_one_or_none()
 
-    
     # Check whether the account is currently locked
-    
     if (
         existing_user is not None
         and existing_user.locked_until is not None
@@ -119,32 +124,29 @@ async def login(
 
         await db.commit()
 
-    
     # Authenticate the user
-    
     try:
         user = await authenticate_user(
             db=db,
-            email=request.email,
-            password=request.password,
+            email=login_request.email,
+            password=login_request.password,
         )
 
     except InvalidCredentialsError:
-
         # Only track failed attempts if the user exists
         if existing_user is not None:
-
             existing_user.failed_login_attempts += 1
 
             # Lock account after 5 failed attempts
-            
             if (
                 existing_user.failed_login_attempts
                 >= MAX_FAILED_ATTEMPTS
             ):
                 existing_user.locked_until = (
                     datetime.now()
-                    + timedelta(minutes=LOCK_DURATION_MINUTES)
+                    + timedelta(
+                        minutes=LOCK_DURATION_MINUTES
+                    )
                 )
 
                 await db.commit()
@@ -160,14 +162,15 @@ async def login(
             # Save failed attempt count
             await db.commit()
 
-        # Wrong credentials
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
-    # Successful login: reset failed attempts
+    # Successful login resets failed attempts
     if (
         user.failed_login_attempts != 0
         or user.locked_until is not None
@@ -183,6 +186,7 @@ async def login(
         token_type="bearer",
     )
 
+
 # CURRENT USER
 
 @router.get(
@@ -193,6 +197,7 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
 
 # REFRESH ACCESS TOKEN
 
@@ -228,6 +233,7 @@ async def refresh_access_token(
         token_type="bearer",
     )
 
+
 # LOGOUT
 
 @router.post(
@@ -252,6 +258,7 @@ async def logout(
         expires_in=remaining_seconds,
     )
 
+
 # VERIFY EMAIL
 
 @router.post(
@@ -275,6 +282,7 @@ async def verify_email(
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
+
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -290,18 +298,20 @@ async def verify_email(
 
     return user
 
+
 # FORGOT PASSWORD
 
-@router.post(
-    "/forgot-password",
-)
+@router.post("/forgot-password")
 async def forgot_password(
     request: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(User).where(User.email == request.email)
+        select(User).where(
+            User.email == request.email
+        )
     )
+
     user = result.scalar_one_or_none()
 
     if user is not None:
@@ -323,11 +333,10 @@ async def forgot_password(
         ),
     }
 
+
 # RESET PASSWORD
 
-@router.post(
-    "/reset-password",
-)
+@router.post("/reset-password")
 async def reset_password(
     request: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
@@ -345,6 +354,7 @@ async def reset_password(
     result = await db.execute(
         select(User).where(User.id == user_id)
     )
+
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -362,6 +372,7 @@ async def reset_password(
     return {
         "message": "Password reset successful",
     }
+
 
 # CHANGE PASSWORD
 

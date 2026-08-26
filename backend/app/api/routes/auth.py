@@ -45,6 +45,7 @@ from app.services.redis import (
     revoke_refresh_token,
 )
 
+from app.services.audit import create_audit_log
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -65,14 +66,31 @@ LOCK_DURATION_MINUTES = 15
 )
 async def register(
     request: RegisterRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await register_user(
+        user = await register_user(
             db=db,
             email=request.email,
             password=request.password,
         )
+
+        ip_address = (
+            http_request.client.host
+            if http_request.client
+            else None
+        )
+
+        await create_audit_log(
+            db=db,
+            user_id=user.id,
+            event_type="USER_REGISTERED",
+            description="New user registered",
+            ip_address=ip_address,
+        )
+
+        return user
 
     except UserAlreadyExistsError:
         raise HTTPException(
@@ -179,6 +197,20 @@ async def login(
         user.locked_until = None
 
         await db.commit()
+
+    ip_address = (
+        request.client.host
+        if request.client
+        else None
+    )
+
+    await create_audit_log(
+        db=db,
+        user_id=user.id,
+        event_type="USER_LOGIN",
+        description="User logged in successfully",
+        ip_address=ip_address,
+    )
 
     return LoginResponse(
         access_token=create_access_token(user.id),

@@ -328,6 +328,13 @@ async def verify_email(
     await db.commit()
     await db.refresh(user)
 
+    await create_audit_log(
+        db=db,
+        user_id=user.id,
+        event_type="EMAIL_VERIFIED",
+        description="User email verified successfully",
+    )
+
     return user
 
 
@@ -401,6 +408,13 @@ async def reset_password(
 
     await db.commit()
 
+    await create_audit_log(
+        db=db,
+        user_id=user.id,
+        event_type="PASSWORD_RESET",
+        description="User password reset successfully",
+    )
+
     return {
         "message": "Password reset successful",
     }
@@ -430,6 +444,13 @@ async def change_password(
     )
 
     await db.commit()
+
+    await create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        event_type="PASSWORD_CHANGED",
+        description="User changed password successfully",
+    )
 
     return {
         "message": "Password changed successfully",

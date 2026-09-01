@@ -221,3 +221,138 @@ async def test_normal_user_cannot_get_audit_logs():
         )
 
     assert response.status_code == 403
+
+@pytest.mark.asyncio
+async def test_admin_can_filter_audit_logs_by_event_type():
+    email = f"filter-event-{uuid.uuid4()}@sentinelforge.com"
+    password = "StrongPassword123!"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        register_response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "password": password,
+            },
+        )
+
+        assert register_response.status_code == 201
+        
+    #Promote user to admin
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(User).where(User.email == email)
+        )
+
+        user = result.scalar_one()
+        user.role = "admin"
+
+        await db.commit()
+
+    # Login as admin and filter audit logs
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": email,
+                "password": password,
+            },
+        )
+
+        assert login_response.status_code == 200
+
+        access_token = login_response.json()["access_token"]
+
+        response = await client.get(
+            "/api/v1/admin/audit-logs",
+            params={
+                "event_type": "USER_LOGIN",
+            },
+            headers={
+                "Authorization":f"bearer {access_token}",
+            },
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert isinstance(data, list)
+
+    for log in data:
+        assert log["event_type"] == "USER_LOGIN"
+
+@pytest.mark.asyncio
+async def test_admin_can_filter_audit_logs_by_user_id():
+    email = f"filter-user-{uuid.uuid4()}@sentinelforge.com"
+    password = "StrongPassword123!"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        # Register user
+        register_response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "password": password,
+            },
+        )
+
+        assert register_response.status_code == 201
+
+        user_id = register_response.json()["id"]
+
+    # Promote user to admin
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(User).where(User.email == email)
+        )
+
+        user = result.scalar_one()
+        user.role = "admin"
+
+        await db.commit()
+
+    # Login as admin and filter by user ID
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": email,
+                "password": password,
+            },
+        )
+
+        assert login_response.status_code == 200
+
+        access_token = login_response.json()["access_token"]
+
+        response = await client.get(
+            "/api/v1/admin/audit-logs",
+            params={
+                "user_id": user_id,
+            },
+            headers={
+                "Authorization": f"Bearer {access_token}",
+            },
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert isinstance(data, list)
+
+    for log in data:
+        assert log["user_id"] == user_id

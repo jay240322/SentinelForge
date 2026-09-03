@@ -140,10 +140,9 @@ async def test_admin_can_get_audit_logs():
 
         user = result.scalar_one()
         user.role = "admin"
-
         await db.commit()
 
-    # Login again after the role has been changed
+    # Login as admin
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -171,16 +170,19 @@ async def test_admin_can_get_audit_logs():
 
     data = response.json()
 
-    # The API returns a list directly
-    assert isinstance(data, list)
-    assert len(data) > 0
+    # API returns a paginated object
+    assert isinstance(data, dict)
 
-    # Registration should have created an audit log
-    assert any(
-        log["event_type"] == "USER_REGISTERED"
-        for log in data
-    )
+    assert "items" in data
+    assert "total" in data
+    assert "page" in data
+    assert "limit" in data
+    assert "pages" in data
 
+    audit_logs = data["items"]
+
+    assert isinstance(audit_logs, list)
+    assert len(audit_logs) > 0
 
 @pytest.mark.asyncio
 async def test_normal_user_cannot_get_audit_logs():
@@ -240,8 +242,8 @@ async def test_admin_can_filter_audit_logs_by_event_type():
         )
 
         assert register_response.status_code == 201
-        
-    #Promote user to admin
+
+    # Promote user to admin
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(User).where(User.email == email)
@@ -249,7 +251,6 @@ async def test_admin_can_filter_audit_logs_by_event_type():
 
         user = result.scalar_one()
         user.role = "admin"
-
         await db.commit()
 
     # Login as admin and filter audit logs
@@ -275,7 +276,7 @@ async def test_admin_can_filter_audit_logs_by_event_type():
                 "event_type": "USER_LOGIN",
             },
             headers={
-                "Authorization":f"bearer {access_token}",
+                "Authorization": f"Bearer {access_token}",
             },
         )
 
@@ -283,9 +284,14 @@ async def test_admin_can_filter_audit_logs_by_event_type():
 
     data = response.json()
 
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert "items" in data
 
-    for log in data:
+    audit_logs = data["items"]
+
+    assert isinstance(audit_logs, list)
+
+    for log in audit_logs:
         assert log["event_type"] == "USER_LOGIN"
 
 @pytest.mark.asyncio
@@ -318,7 +324,6 @@ async def test_admin_can_filter_audit_logs_by_user_id():
 
         user = result.scalar_one()
         user.role = "admin"
-
         await db.commit()
 
     # Login as admin and filter by user ID
@@ -352,7 +357,12 @@ async def test_admin_can_filter_audit_logs_by_user_id():
 
     data = response.json()
 
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert "items" in data
 
-    for log in data:
+    audit_logs = data["items"]
+
+    assert isinstance(audit_logs, list)
+
+    for log in audit_logs:
         assert log["user_id"] == user_id

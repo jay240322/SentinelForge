@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
@@ -8,7 +8,10 @@ from app.db.dependencies import get_db
 from app.models import User
 from app.schemas.auth import UserResponse
 from app.models.audit_log import AuditLog
-from app.schemas.audit import AuditLogResponse
+from app.schemas.audit import (
+    AuditLogResponse,
+    AuditLogListResponse,
+)
 
 router = APIRouter(
     prefix="/api/v1/admin",
@@ -31,16 +34,19 @@ async def get_all_users(
 
 @router.get(
     "/audit-logs",
-    response_model=list[AuditLogResponse],
+    response_model=AuditLogListResponse,
 )
 async def get_audit_logs(
     event_type: str | None = Query(default=None),
     user_id: int | None = Query(default=None),
     start_date: datetime | None = Query(default=None),
     end_date: datetime | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
+
     query = select(AuditLog)
 
     if event_type is not None:
@@ -60,15 +66,36 @@ async def get_audit_logs(
 
     if end_date is not None:
         query = query.where(
-            AudiLog.created_at <= end_date
+            AuditLog.created_at <= end_date
         )
 
-    query = query.order_by(
-        AuditLog.created_at.desc()
+    # Total number of matching audit logs
+    count_query = select(func.count()).select_from(
+        query.subquery()
     )
-    
-    result = await db.execute(query)
 
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one()
+
+    # Apply pagination
+    offset = (page - 1) * limit
+
+    query = (
+        query
+        .order_by(AuditLog.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
     audit_logs = result.scalars().all()
 
-    return audit_logs
+    pages = (total + limit - 1) // limit
+
+    return {
+        "items": audit_logs,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+    }

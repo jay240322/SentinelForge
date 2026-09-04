@@ -9,6 +9,7 @@ from app.schemas.auth import UserResponse
 from app.models.audit_log import AuditLog
 from app.models import User, SecurityAlert
 from app.schemas.security_alert import SecurityAlertResponse
+from app.schemas.dashboard import DashboardResponse
 from app.services.security_alert import (
     get_security_alerts,
     resolve_security_alert,
@@ -139,3 +140,64 @@ async def resolve_alert(
         )
 
     return alert
+
+@router.get(
+    "/dashboard",
+    response_model=DashboardResponse,
+)
+async def get_dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    # Total users
+    total_users_result = await db.execute(
+        select(func.count()).select_from(User)
+    )
+    total_users = total_users_result.scalar_one()
+
+    # Open security alerts
+    open_alerts_result = await db.execute(
+        select(func.count()).select_from(SecurityAlert).where(
+            SecurityAlert.status == "open"
+        )
+    )
+    open_security_alerts = open_alerts_result.scalar_one()
+
+    # Resolved security alerts
+    resolved_alerts_result = await db.execute(
+        select(func.count()).select_from(SecurityAlert).where(
+            SecurityAlert.status == "resolved"
+        )
+    )
+    resolved_security_alerts = resolved_alerts_result.scalar_one()
+
+    # Total audit logs
+    total_audit_logs_result = await db.execute(
+        select(func.count()).select_from(AuditLog)
+    )
+    total_audit_logs = total_audit_logs_result.scalar_one()
+
+    # Five most recent security alerts
+    recent_alerts_result = await db.execute(
+        select(SecurityAlert)
+        .order_by(SecurityAlert.created_at.desc())
+        .limit(5)
+    )
+    recent_security_alerts = recent_alerts_result.scalars().all()
+
+    # Five most recent audit logs
+    recent_logs_result = await db.execute(
+        select(AuditLog)
+        .order_by(AuditLog.created_at.desc())
+        .limit(5)
+    )
+    recent_audit_logs = recent_logs_result.scalars().all()
+
+    return {
+        "total_users": total_users,
+        "open_security_alerts": open_security_alerts,
+        "resolved_security_alerts": resolved_security_alerts,
+        "total_audit_logs": total_audit_logs,
+        "recent_security_alerts": recent_security_alerts,
+        "recent_audit_logs": recent_audit_logs,
+    }

@@ -1,13 +1,18 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from app.auth.permissions import require_role
 from app.db.dependencies import get_db
-from app.models import User
 from app.schemas.auth import UserResponse
 from app.models.audit_log import AuditLog
+from app.models import User, SecurityAlert
+from app.schemas.security_alert import SecurityAlertResponse
+from app.services.security_alert import (
+    get_security_alerts,
+    resolve_security_alert,
+)
 from app.schemas.audit import (
     AuditLogResponse,
     AuditLogListResponse,
@@ -99,3 +104,38 @@ async def get_audit_logs(
         "limit": limit,
         "pages": pages,
     }
+
+@router.get(
+    "/security-alerts",
+    response_model=list[SecurityAlertResponse],
+)
+async def get_all_security_alerts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    alerts = await get_security_alerts(db)
+
+    return alerts
+
+
+@router.patch(
+    "/security-alerts/{alert_id}/resolve",
+    response_model=SecurityAlertResponse,
+)
+async def resolve_alert(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    alert = await resolve_security_alert(
+        db=db,
+        alert_id=alert_id,
+    )
+
+    if alert is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Security alert not found",
+        )
+
+    return alert

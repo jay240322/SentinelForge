@@ -46,6 +46,7 @@ from app.services.redis import (
 )
 
 from app.services.audit import create_audit_log
+from app.services.security_alert import create_security_alert
 
 router = APIRouter(
     prefix="/api/v1/auth",
@@ -128,12 +129,26 @@ async def login(
         now = datetime.now()
 
         if existing_user.locked_until > now:
+            ip_address = (
+                request.client.host
+                if request.client
+                else None
+            )
+
+            await create_security_alert(
+                db=db,
+                user_id=existing_user.id,
+                alert_type="LOCKED_ACCOUNT_ACCESS",
+                severity="medium",
+                description=(
+                    "Login attempt detected on a locked account."
+                ),
+                ip_address=ip_address,
+            )
+
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
-                detail=(
-                    "Account is temporarily locked. "
-                    "Please try again later."
-                ),
+                detail="Account is temporarily locked. Please try again later."
             )
 
         # Lock period has expired
@@ -168,6 +183,24 @@ async def login(
                 )
 
                 await db.commit()
+
+                ip_address = (
+                    request.client.host
+                    if request.client
+                    else None
+                )
+
+                await create_security_alert(
+                    db=db,
+                    user_id=existing_user.id,
+                    alert_type="BRUTE_FORCE_ATTACK",
+                    severity="high",
+                    description=(
+                        "Account was locked after multiple failed"
+                        "login attempts."
+                    ),
+                    ip_address=ip_address,
+                )
 
                 raise HTTPException(
                     status_code=status.HTTP_423_LOCKED,

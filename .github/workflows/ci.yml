@@ -18,13 +18,13 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: sentinelforge
-          POSTGRES_PASSWORD: sentinelforge
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: sentinelforge
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U sentinelforge -d sentinelforge"
+          --health-cmd "pg_isready -U $${{POSTGRES_USER}} -d sentinelforge"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -57,7 +57,7 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         env:
-          DATABASE_URL: postgresql+asyncpg://sentinelforge:sentinelforge@localhost:5432/sentinelforge
+          DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/sentinelforge
           REDIS_URL: redis://localhost:6379/0
         run: |
           pytest

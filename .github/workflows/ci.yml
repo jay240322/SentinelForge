@@ -53,6 +53,13 @@ jobs:
         run: |
           pip install --require-hashes --only-binary=:all: -r requirements.txt
 
+      - name: Run database migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/sentinelforge
+        run: |
+          alembic upgrade head
+
       - name: Run backend tests
         working-directory: backend
         env:

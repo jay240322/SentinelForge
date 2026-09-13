@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle,
@@ -21,7 +21,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     const accessToken = sessionStorage.getItem("access_token");
 
     if (!accessToken) {
@@ -54,11 +54,15 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadDashboard]);
 
   const handleLogout = () => {
     sessionStorage.removeItem("access_token");

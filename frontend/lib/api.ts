@@ -99,3 +99,43 @@ export async function getUsers(accessToken: string): Promise<User[]> {
 
   return response.json();
 }
+export async function getSecurityAlerts(
+  accessToken: string,
+): Promise<SecurityAlert[]> {
+  const response = await fetch(`${API_URL}/api/v1/admin/security-alerts`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+
+    throw new Error(data?.detail || "Unable to load security alerts");
+  }
+
+  return response.json();
+}
+
+export async function resolveSecurityAlert(
+  accessToken: string,
+  alertId: number,
+): Promise<SecurityAlert> {
+  const response = await fetch(
+    `${API_URL}/api/v1/admin/security-alerts/${alertId}/resolve`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+
+    throw new Error(data?.detail || "Unable to resolve security alert");
+  }
+
+  return response.json();
+}

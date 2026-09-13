@@ -279,7 +279,10 @@ export default function SecurityAlertsPage() {
                       </td>
 
                       <td className="px-5 py-4">
-                        <SeverityBadge severity={alert.severity} />
+                        <AlertBadge
+                          value={alert.severity}
+                          variant="severity"
+                        />
                       </td>
 
                       <td className="px-5 py-4 text-slate-300">
@@ -291,7 +294,10 @@ export default function SecurityAlertsPage() {
                       </td>
 
                       <td className="px-5 py-4">
-                        <StatusBadge status={alert.status} />
+                        <AlertBadge
+                          value={alert.status}
+                          variant="status"
+                        />
                       </td>
 
                       <td className="px-5 py-4 whitespace-nowrap text-xs text-slate-500">
@@ -357,28 +363,26 @@ function MetricCard({
   );
 }
 
-function SeverityBadge({ severity }: { severity: string }) {
-  const normalizedSeverity = severity.toLowerCase();
+type AlertBadgeProps = {
+  value: string;
+  variant: "severity" | "status";
+};
+
+function AlertBadge({ value, variant }: AlertBadgeProps) {
+  const normalizedValue = value.toLowerCase();
 
   const classes =
-    normalizedSeverity === "critical"
-      ? "border-red-800 bg-red-950 text-red-300"
-      : normalizedSeverity === "high"
-        ? "border-orange-800 bg-orange-950 text-orange-300"
-        : normalizedSeverity === "medium"
-          ? "border-yellow-800 bg-yellow-950 text-yellow-300"
-          : "border-slate-700 bg-slate-800 text-slate-300";
+    variant === "severity"
+      ? normalizedValue === "critical"
+        ? "border-red-800 bg-red-950 text-red-300"
+        : normalizedValue === "high"
+          ? "border-orange-800 bg-orange-950 text-orange-300"
+          : normalizedValue === "medium"
+            ? "border-yellow-800 bg-yellow-950 text-yellow-300"
+            : "border-slate-700 bg-slate-800 text-slate-300"
+      : normalizedValue === "open"
+        ? "border-red-800 bg-red-950 text-red-300"
+        : "border-emerald-800 bg-emerald-950 text-emerald-300";
 
-  return <SecurityBadge value={severity} classes={classes} />;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const normalizedStatus = status.toLowerCase();
-
-  const classes =
-    normalizedStatus === "open"
-      ? "border-red-800 bg-red-950 text-red-300"
-      : "border-emerald-800 bg-emerald-950 text-emerald-300";
-
-  return <SecurityBadge value={status} classes={classes} />;
+  return <SecurityBadge value={value} classes={classes} />;
 }

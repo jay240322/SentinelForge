@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle,
@@ -11,8 +11,13 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { getDashboard, type DashboardData } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { getDashboard, type DashboardData } from "@/lib/api";
+import {
+  clearSession,
+  getAccessToken,
+  isAuthenticationError,
+} from "@/lib/auth";
 
 export default function Home() {
   const router = useRouter();
@@ -21,8 +26,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadDashboard = async () => {
-    const accessToken = sessionStorage.getItem("access_token");
+  const loadDashboard = useCallback(async () => {
+    const accessToken = getAccessToken();
 
     if (!accessToken) {
       router.push("/login");
@@ -40,12 +45,8 @@ export default function Home() {
       const message =
         err instanceof Error ? err.message : "Unable to load dashboard";
 
-      if (
-        message.toLowerCase().includes("not authenticated") ||
-        message.toLowerCase().includes("unauthorized")
-      ) {
-        sessionStorage.removeItem("access_token");
-        sessionStorage.removeItem("refresh_token");
+      if (isAuthenticationError(message)) {
+        clearSession();
         router.push("/login");
         return;
       }
@@ -54,16 +55,18 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadDashboard]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("refresh_token");
-
+    clearSession();
     router.push("/login");
   };
 

@@ -14,6 +14,11 @@ import {
   resolveSecurityAlert,
   type SecurityAlert,
 } from "@/lib/api";
+import {
+  clearSession,
+  getAccessToken,
+  isAuthenticationError,
+} from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
 export default function SecurityAlertsPage() {
@@ -25,7 +30,7 @@ export default function SecurityAlertsPage() {
   const [resolvingId, setResolvingId] = useState<number | null>(null);
 
   const loadAlerts = useCallback(async () => {
-    const accessToken = sessionStorage.getItem("access_token");
+    const accessToken = getAccessToken();
 
     if (!accessToken) {
       router.push("/login");
@@ -45,12 +50,8 @@ export default function SecurityAlertsPage() {
           ? err.message
           : "Unable to load security alerts";
 
-      if (
-        message.toLowerCase().includes("not authenticated") ||
-        message.toLowerCase().includes("unauthorized")
-      ) {
-        sessionStorage.removeItem("access_token");
-        sessionStorage.removeItem("refresh_token");
+      if (isAuthenticationError(message)) {
+        clearSession();
         router.push("/login");
         return;
       }
@@ -70,7 +71,7 @@ export default function SecurityAlertsPage() {
   }, [loadAlerts]);
 
   const handleResolve = async (alertId: number) => {
-    const accessToken = sessionStorage.getItem("access_token");
+    const accessToken = getAccessToken();
 
     if (!accessToken) {
       router.push("/login");
@@ -97,6 +98,12 @@ export default function SecurityAlertsPage() {
           ? err.message
           : "Unable to resolve security alert";
 
+      if (isAuthenticationError(message)) {
+        clearSession();
+        router.push("/login");
+        return;
+      }
+
       setError(message);
     } finally {
       setResolvingId(null);
@@ -104,9 +111,7 @@ export default function SecurityAlertsPage() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("refresh_token");
-
+    clearSession();
     router.push("/login");
   };
 

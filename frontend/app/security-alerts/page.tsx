@@ -19,6 +19,7 @@ import {
   getAccessToken,
   isAuthenticationError,
 } from "@/lib/auth";
+import SecurityBadge from "@/components/SecurityBadge";
 import { useRouter } from "next/navigation";
 
 export default function SecurityAlertsPage() {
@@ -368,13 +369,7 @@ function SeverityBadge({ severity }: { severity: string }) {
           ? "border-yellow-800 bg-yellow-950 text-yellow-300"
           : "border-slate-700 bg-slate-800 text-slate-300";
 
-  return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${classes}`}
-    >
-      {severity}
-    </span>
-  );
+  return <SecurityBadge value={severity} classes={classes} />;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -385,11 +380,5 @@ function StatusBadge({ status }: { status: string }) {
       ? "border-red-800 bg-red-950 text-red-300"
       : "border-emerald-800 bg-emerald-950 text-emerald-300";
 
-  return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${classes}`}
-    >
-      {status}
-    </span>
-  );
+  return <SecurityBadge value={status} classes={classes} />;
 }

@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: sentinelforge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: joypatel2403/sentinelforge-backend:latest
+          ports:
+            - containerPort: 8000
+
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-database-secret
+                  key: DATABASE_URL
+
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-backend-secret
+                  key: JWT_SECRET_KEY
+
+            - name: JWT_ALGORITHM
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-backend-secret
+                  key: JWT_ALGORITHM
+
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-backend-secret
+                  key: ACCESS_TOKEN_EXPIRE_MINUTES
+
+            - name: REFRESH_TOKEN_EXPIRE_DAYS
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-backend-secret
+                  key: REFRESH_TOKEN_EXPIRE_DAYS
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+              ephemeral-storage: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+              ephemeral-storage: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: sentinelforge
+spec:
+  type: NodePort
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30081

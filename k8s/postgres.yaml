@@ -13,6 +13,7 @@ spec:
       labels:
         app: postgres
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: postgres
           image: postgres:17-alpine
@@ -22,9 +23,19 @@ spec:
             - name: POSTGRES_USER
               value: sentinelforge
             - name: POSTGRES_PASSWORD
-              value: sentinelforge
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-postgres-secret
+                  key: POSTGRES_PASSWORD
             - name: POSTGRES_DB
               value: sentinelforge
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data

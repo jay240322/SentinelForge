@@ -13,14 +13,19 @@ spec:
       labels:
         app: backend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: backend
           image: joypatel2403/sentinelforge-backend:latest
           ports:
             - containerPort: 8000
+
           env:
             - name: DATABASE_URL
-              value: postgresql+asyncpg://sentinelforge:sentinelforge@postgres:5432/sentinelforge
+              valueFrom:
+                secretKeyRef:
+                  name: sentinelforge-database-secret
+                  key: DATABASE_URL
 
             - name: REDIS_URL
               value: redis://redis:6379/0
@@ -48,6 +53,14 @@ spec:
                 secretKeyRef:
                   name: sentinelforge-backend-secret
                   key: REFRESH_TOKEN_EXPIRE_DAYS
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
 
 ---
 apiVersion: v1

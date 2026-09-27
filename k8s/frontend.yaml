@@ -13,14 +13,24 @@ spec:
       labels:
         app: frontend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: frontend
           image: joypatel2403/sentinelforge-frontend:latest
           ports:
             - containerPort: 3000
+
           env:
             - name: NEXT_PUBLIC_API_URL
-              value: http://127.0.0.1:36533
+              value: http://backend:8000
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
 
 ---
 apiVersion: v1

@@ -9,7 +9,7 @@ RUN useradd --create-home --shell /bin/bash appuser
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r requirements.txt
 
 COPY app ./app
 

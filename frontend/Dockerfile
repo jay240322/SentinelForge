@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY . .
 
@@ -18,10 +18,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=builder /app/package*.json ./
-RUN npm ci --omit=dev
+
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/.next ./.next
+
 COPY --from=builder /app/public ./public
+
+USER node
 
 EXPOSE 3000
 

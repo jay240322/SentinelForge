@@ -33,4 +33,6 @@ Thumbs.db
 
 # Coverage
 .coverage
-htmlcov/
+htmlcov/sentinelforge-backup.sql
+
+sentinelforge-backup.sql

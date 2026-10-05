@@ -81,3 +81,71 @@ Navigate to:
      -H "Content-Type: application/json" \
      -d '{"email":"testuser@sentinelforge.com","password":"StrongPassword123!"}'
    ```
+
+---
+
+## Argo CD GitOps Operations Guide
+
+SentinelForge uses declarative GitOps deployment managed by Argo CD.
+
+### 1. Application Architecture & Configuration
+The GitOps application is defined in `argocd/application.yaml`:
+- **Repository**: `https://github.com/jay240322/sentinelforge.git`
+- **Target Branch / Revision**: `develop`
+- **Path**: `k8s/`
+- **Destination**: `https://kubernetes.default.svc` in namespace `sentinelforge`
+- **Sync Policy**: Automated sync with Self-Healing (`selfHeal: true`) and Pruning (`prune: true`).
+
+### 2. Inspecting the Application
+- **View Application Overview**:
+  ```bash
+  kubectl get application sentinelforge -n argocd
+  ```
+- **View Detailed Status & Managed Resources**:
+  ```bash
+  kubectl get application sentinelforge -n argocd -o yaml
+  ```
+- **View Managed Resources in Namespace**:
+  ```bash
+  kubectl get all,pvc,ingress -n sentinelforge
+  ```
+
+### 3. Manual Sync & Reconciliation
+If automated sync is paused or you need an immediate refresh:
+- **Trigger Argo CD Reconciliation**:
+  ```bash
+  kubectl patch application sentinelforge -n argocd --type merge -p '{"operation":{"sync":{"prune":true}}}'
+  ```
+- **Hard Refresh from Git**:
+  ```bash
+  kubectl patch application sentinelforge -n argocd --type merge -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+  ```
+
+### 4. Health & Status Checks
+- **Check Health & Sync Status**:
+  ```bash
+  kubectl get application sentinelforge -n argocd
+  ```
+- **Check Live Pods & Workloads**:
+  ```bash
+  kubectl get pods,svc,pvc,ingress -n sentinelforge
+  ```
+
+### 5. Troubleshooting Sync Failures
+- **View Application Error / Sync Conditions**:
+  ```bash
+  kubectl get application sentinelforge -n argocd -o jsonpath='{.status.conditions}'
+  ```
+- **Inspect Application Controller Logs**:
+  ```bash
+  kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller --tail=100
+  ```
+- **Inspect Repo Server Logs**:
+  ```bash
+  kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --tail=100
+  ```
+- **Common Failure Scenarios & Resolutions**:
+  1. *Git Connectivity / Revision Error*: Ensure the Git repository URL is correct and branch exists in remote.
+  2. *Schema Validation Errors*: Validate manifests locally with `kubectl apply --dry-run=client -f k8s/` before pushing.
+  3. *Resource Immutability (e.g. PVC size reduction)*: PersistentVolumeClaims cannot be reduced in size.
+  4. *Missing Secrets*: External secrets must exist in namespace `sentinelforge` prior to pod scheduling.

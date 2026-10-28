@@ -2,7 +2,12 @@
 __pycache__
 *.pyc
 .git
-.env
+.env*
+*.secret.yaml
+*secret*.yaml
+*.sql
+*.pem
+*.key
 .pytest_cache
 .mypy_cache
 .ruff_cache

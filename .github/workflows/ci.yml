@@ -71,10 +71,23 @@ jobs:
         run: |
           pytest
 
+  security-audit:
+    name: Security & Secret Leak Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Secret Leak & Security Audit
+        run: |
+          chmod +x ./scripts/check-secret-leaks.sh
+          ./scripts/check-secret-leaks.sh
+
   docker-publish:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-    needs: backend-test
+    needs: [backend-test, security-audit]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
 
     steps:

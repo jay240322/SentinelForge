@@ -1,6 +1,10 @@
 node_modules
 .next
 .git
-.env
-.env.local
+.env*
+*.secret.yaml
+*secret*.yaml
+*.sql
+*.pem
+*.key
 npm-debug.log*

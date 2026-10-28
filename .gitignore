@@ -9,10 +9,24 @@ backend/__pycache__/
 backend/**/*.pyc
 backend/.env
 
-# Environment
+# Environment & Secrets
 .env
 .env.*
 !.env.example
+!.env*.example
+*.env.secrets
+secrets.env
+
+# Kubernetes Secrets & Operator Credentials
+*.secret.yaml
+*.secret.yml
+*secret*.yaml
+!k8s/secrets.example.yaml
+.secrets/
+secrets/
+*.pem
+*.key
+*.crt
 
 # IDE
 .vscode/
@@ -33,6 +47,8 @@ Thumbs.db
 
 # Coverage
 .coverage
-htmlcov/sentinelforge-backup.sql
+htmlcov/
 
+# Database dumps
 sentinelforge-backup.sql
+*.sql

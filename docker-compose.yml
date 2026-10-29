@@ -2,60 +2,97 @@ services:
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
     container_name: sentinelforge-frontend
+    restart: unless-stopped
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      WATCHPACK_POLLING: "true"
+      - NODE_ENV=production
+      - BACKEND_URL=${INTERNAL_BACKEND_URL:-http://backend:8000}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - sentinelforge-network
 
   backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile
     container_name: sentinelforge-backend
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    volumes:
-      - ./backend:/app
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://sentinelforge:sentinelforge@postgres:5432/sentinelforge
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - sentinelforge-network
 
   postgres:
     image: postgres:17-alpine
     container_name: sentinelforge-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: sentinelforge
-      POSTGRES_PASSWORD: sentinelforge
-      POSTGRES_DB: sentinelforge
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-sentinelforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelforge}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinelforge -d sentinelforge"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentinelforge} -d ${POSTGRES_DB:-sentinelforge}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - sentinelforge-network
 
   redis:
     image: redis:8-alpine
     container_name: sentinelforge-redis
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - sentinelforge-network
 
 volumes:
   postgres_data:
+    name: sentinelforge_postgres_data
   redis_data:
+    name: sentinelforge_redis_data
+
+networks:
+  sentinelforge-network:
+    name: sentinelforge_network
+    driver: bridge

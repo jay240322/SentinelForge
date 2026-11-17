@@ -52,3 +52,9 @@ htmlcov/
 # Database dumps
 sentinelforge-backup.sql
 *.sql
+*.dump
+
+# Self-hosted installer runtime artifacts
+.sentinelforge/
+deploy/.env
+sentinelforge-backups/

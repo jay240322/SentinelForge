@@ -1,0 +1,173 @@
+# ==============================================================================
+# SentinelForge - Self-Hosted Docker Compose Deployment
+#
+# This file is installed by scripts/install.sh into the installation directory
+# (default: ~/.sentinelforge) together with a generated .env file.
+#
+# Security properties:
+#   * PostgreSQL and Redis have no published host ports.
+#   * Only the gateway (frontend + /api proxy) is exposed, loopback by default.
+#   * Secrets come from the environment file and are never baked into images.
+#   * Application containers run as non-root users and drop all capabilities.
+#   * Named volumes preserve PostgreSQL and Redis data across upgrades.
+#
+# Do not commit a generated .env file. See docs/installation.md.
+# ==============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend-environment: &backend-environment
+  DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-sentinelforge}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-sentinelforge}"
+  REDIS_URL: "redis://redis:6379/0"
+  JWT_SECRET_KEY: "${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}"
+  JWT_ALGORITHM: "${JWT_ALGORITHM:-HS256}"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "${ACCESS_TOKEN_EXPIRE_MINUTES:-15}"
+  REFRESH_TOKEN_EXPIRE_DAYS: "${REFRESH_TOKEN_EXPIRE_DAYS:-7}"
+  # The backend is only reachable from the private Compose network. Trusting
+  # proxy headers from that network lets audit logs and rate limiting see the
+  # real client address forwarded by the gateway.
+  FORWARDED_ALLOW_IPS: "*"
+
+services:
+  # Public entrypoint. Next.js rewrites are evaluated at build time, so the
+  # published frontend image cannot be re-pointed at the backend at runtime.
+  # This gateway guarantees /api routing while using unmodified images.
+  gateway:
+    image: ${SENTINELFORGE_GATEWAY_IMAGE:-nginxinc/nginx-unprivileged:1.27-alpine}
+    restart: unless-stopped
+    ports:
+      - "${SENTINELFORGE_BIND:-127.0.0.1}:${SENTINELFORGE_PORT:-8080}:8080"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  frontend:
+    image: ${SENTINELFORGE_FRONTEND_IMAGE:-joypatel2403/sentinelforge-frontend:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # Kept for forward compatibility; API traffic is handled by the gateway.
+      BACKEND_URL: "http://backend:8000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    logging: *default-logging
+
+  backend:
+    image: ${SENTINELFORGE_BACKEND_IMAGE:-joypatel2403/sentinelforge-backend:latest}
+    restart: unless-stopped
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    logging: *default-logging
+
+  # Run with: docker compose --profile tools run --rm --no-deps migrate
+  migrate:
+    image: ${SENTINELFORGE_BACKEND_IMAGE:-joypatel2403/sentinelforge-backend:latest}
+    profiles: ["tools"]
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    logging: *default-logging
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: "256mb"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sentinelforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelforge}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    driver: bridge

@@ -13,6 +13,11 @@ RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r requireme
 
 COPY app ./app
 
+# Ship migrations with the image so the same versioned schema is applied by
+# `alembic upgrade head` in Docker Compose and Kubernetes environments.
+COPY alembic.ini .
+COPY alembic ./alembic
+
 RUN chown -R appuser:appuser /app
 
 USER appuser

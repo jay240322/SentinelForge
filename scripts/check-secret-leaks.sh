@@ -10,7 +10,6 @@ set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
@@ -119,6 +118,29 @@ if [[ -z "$frontend_leaks" ]]; then
     log_pass "Frontend codebase is clean of backend secrets."
 else
     log_fail "Frontend code references backend secrets:\n$frontend_leaks"
+fi
+
+# Check 7: Audit the Docker Compose deployment assets
+log_check "Auditing deploy/ for committed environment files and generated secrets..."
+tracked_deploy_env=$(git ls-files 'deploy/.env' 2>/dev/null || true)
+if [[ -z "$tracked_deploy_env" ]]; then
+    log_pass "deploy/.env is not tracked in Git."
+else
+    log_fail "deploy/.env is tracked in Git:\n$tracked_deploy_env"
+fi
+
+deploy_secret_leaks=$(grep -RnE '(POSTGRES_PASSWORD|JWT_SECRET_KEY)=[0-9a-f]{64}' \
+    deploy/.env.example deploy/docker-compose.yml deploy/config/ 2>/dev/null || true)
+if [[ -z "$deploy_secret_leaks" ]]; then
+    log_pass "deploy/ contains no generated 64-character secrets."
+else
+    log_fail "Potential generated secrets found under deploy/:\n$deploy_secret_leaks"
+fi
+
+if [[ -f deploy/.env.example ]] && grep -q 'replace_with' deploy/.env.example; then
+    log_pass "deploy/.env.example contains placeholders only."
+else
+    log_fail "deploy/.env.example is missing or does not contain placeholders."
 fi
 
 echo ""

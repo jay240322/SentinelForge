@@ -1,10 +1,92 @@
-# SentinelForge - Local Kubernetes Access Guide
+# SentinelForge - Installation and Operations Guide
 
-This guide describes how to reliably access SentinelForge in local development on Windows with WSL2, Minikube (Docker driver), and NGINX Ingress.
+SentinelForge is a self-hosted DevSecOps security and deployment management
+platform. This repository supports two deployment paths:
+
+- **Docker Compose** — recommended for self-hosting on a single Linux, macOS or
+  WSL2 host. This is the fastest path to a running platform.
+- **Kubernetes** — Minikube, NGINX Ingress and Argo CD for local or clustered
+  deployments. See
+  [Kubernetes Deployment](#kubernetes-deployment-minikube--argo-cd).
 
 ---
 
-## Architecture & Routing Overview
+## Docker Compose Installation (Recommended for Self-Hosting)
+
+### Quick start
+
+Requirements: Docker Engine or Docker Desktop, Docker Compose v2, and a running
+Docker daemon. Native Windows shells are not supported; run the installer inside
+WSL2 or on Linux/macOS.
+
+```bash
+git clone https://github.com/jay240322/sentinelforge.git
+cd sentinelforge
+git switch feature/installer   # or the branch/tag containing the installer
+./scripts/install.sh
+```
+
+The installer:
+
+1. Checks the operating system, Docker, Compose v2, the Docker daemon and free
+   disk space.
+2. Creates `~/.sentinelforge` (mode `0700`) and installs the Compose stack.
+3. Generates random PostgreSQL and JWT secrets into `.env` (mode `0600`).
+4. Pulls images, starts PostgreSQL and Redis, and applies Alembic migrations.
+5. Starts the frontend, backend and gateway, then verifies health and routing.
+6. Prints the application URL and troubleshooting commands.
+
+Open **http://localhost:8080** after a successful install. PostgreSQL and Redis
+are never exposed on host ports; only the gateway binds to `127.0.0.1:8080` by
+default.
+
+### Common operations
+
+```bash
+# Re-run safely: reuses .env and data volumes (idempotent)
+./scripts/install.sh
+
+# Use a different port or expose on the LAN (firewall/reverse proxy required)
+./scripts/install.sh --port 9090
+./scripts/install.sh --bind 0.0.0.0
+
+# Pin release images instead of :latest
+./scripts/install.sh --tag v1.0.0
+
+# Safe uninstall: preserves all data, volumes and configuration
+./scripts/uninstall.sh
+
+# Destructive purge: requires typing "DELETE DATA"
+./scripts/uninstall.sh --purge-data
+```
+
+Full documentation: [docs/installation.md](docs/installation.md). The planned
+`sentinelforge start|stop|status|logs|update|uninstall` CLI is specified in
+[docs/cli-design.md](docs/cli-design.md).
+
+### Compose layout
+
+The self-hosted stack uses `deploy/docker-compose.yml` and
+`deploy/config/nginx.conf`. A small gateway proxies `/` to Next.js and `/api` to
+FastAPI, which keeps published frontend images working without rebuilding them.
+Only the gateway publishes a port.
+
+### First administrator
+
+Register through the UI or `POST /api/v1/auth/register`, then promote the account
+with a deliberate SQL `UPDATE` as described in
+[docs/installation.md#create-or-promote-an-administrator](docs/installation.md#create-or-promote-an-administrator).
+The installer does not create accounts or use default credentials.
+
+---
+
+## Kubernetes Deployment (Minikube + Argo CD)
+
+The following sections describe the existing Kubernetes workflow. Docker Compose
+and Kubernetes are independent deployment methods; do not run both against the
+same PostgreSQL data.
+
+### Architecture & Routing Overview
 
 SentinelForge uses Kubernetes NGINX Ingress to provide unified routing for both the Next.js frontend and FastAPI backend:
 
@@ -15,15 +97,15 @@ SentinelForge uses Kubernetes NGINX Ingress to provide unified routing for both 
 
 ---
 
-## Local Setup Requirements
+### Local Setup Requirements
 
-### 1. Prerequisites
+#### 1. Prerequisites
 - Windows 10/11 with WSL2 enabled (Ubuntu)
 - Minikube with `docker` driver
 - NGINX Ingress addon enabled (`minikube addons enable ingress`)
 - `kubectl` configured to interact with Minikube
 
-### 2. Configure Hostname Resolution (`sentinelforge.local`)
+#### 2. Configure Hostname Resolution (`sentinelforge.local`)
 
 Because Minikube running under the Docker driver on WSL2 isolates container bridge IPs (e.g., `192.168.49.2`) from direct Windows network routing, Windows and WSL resolve `sentinelforge.local` to `127.0.0.1` (localhost), pairing with Ingress controller port-forwarding on port 8090.
 
@@ -41,9 +123,9 @@ Add the following line to `/etc/hosts`:
 
 ---
 
-## Running & Accessing SentinelForge Locally
+### Running & Accessing SentinelForge Locally
 
-### 1. Start Minikube & Deploy Resources
+#### 1. Start Minikube & Deploy Resources
 ```bash
 # Start Minikube with the docker driver
 minikube start --driver=docker
@@ -55,20 +137,20 @@ minikube start --driver=docker
 kubectl apply -f k8s/
 ```
 
-### 2. Expose the Ingress Controller
+#### 2. Expose the Ingress Controller
 Port-forward the Ingress controller service port 80 to local port 8090:
 ```bash
 kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8090:80
 ```
 
-### 3. Open in Browser
+#### 3. Open in Browser
 Navigate to:
 - **Application Web UI**: [http://sentinelforge.local:8090](http://sentinelforge.local:8090)
 - **API Endpoints**: `http://sentinelforge.local:8090/api/v1/auth/login`
 
 ---
 
-## Health & Verification
+### Health & Verification
 
 1. **Verify Pod & Service Status**:
    ```bash
@@ -87,11 +169,11 @@ Navigate to:
 
 ---
 
-## Argo CD GitOps Operations Guide
+### Argo CD GitOps Operations Guide
 
 SentinelForge uses declarative GitOps deployment managed by Argo CD.
 
-### 1. Application Architecture & Configuration
+#### 1. Application Architecture & Configuration
 The GitOps application is defined in `argocd/application.yaml`:
 - **Repository**: `https://github.com/jay240322/sentinelforge.git`
 - **Target Branch / Revision**: `develop`
@@ -99,7 +181,7 @@ The GitOps application is defined in `argocd/application.yaml`:
 - **Destination**: `https://kubernetes.default.svc` in namespace `sentinelforge`
 - **Sync Policy**: Automated sync with Self-Healing (`selfHeal: true`) and Pruning (`prune: true`).
 
-### 2. Inspecting the Application
+#### 2. Inspecting the Application
 - **View Application Overview**:
   ```bash
   kubectl get application sentinelforge -n argocd
@@ -113,7 +195,7 @@ The GitOps application is defined in `argocd/application.yaml`:
   kubectl get all,pvc,ingress -n sentinelforge
   ```
 
-### 3. Manual Sync & Reconciliation
+#### 3. Manual Sync & Reconciliation
 If automated sync is paused or you need an immediate refresh:
 - **Trigger Argo CD Reconciliation**:
   ```bash
@@ -124,7 +206,7 @@ If automated sync is paused or you need an immediate refresh:
   kubectl patch application sentinelforge -n argocd --type merge -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
   ```
 
-### 4. Health & Status Checks
+#### 4. Health & Status Checks
 - **Check Health & Sync Status**:
   ```bash
   kubectl get application sentinelforge -n argocd
@@ -134,7 +216,7 @@ If automated sync is paused or you need an immediate refresh:
   kubectl get pods,svc,pvc,ingress -n sentinelforge
   ```
 
-### 5. Troubleshooting Sync Failures
+#### 5. Troubleshooting Sync Failures
 - **View Application Error / Sync Conditions**:
   ```bash
   kubectl get application sentinelforge -n argocd -o jsonpath='{.status.conditions}'
@@ -155,11 +237,11 @@ If automated sync is paused or you need an immediate refresh:
 
 ---
 
-## Kubernetes Secret Management Guide
+### Kubernetes Secret Management Guide
 
 SentinelForge uses native Kubernetes Secrets managed out-of-band to maintain strict GitOps separation (Argo CD) while keeping production credentials entirely outside Git.
 
-### 1. Overview of Required Secrets
+#### 1. Overview of Required Secrets
 
 | Secret Name | Key | Consumed By | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -170,7 +252,7 @@ SentinelForge uses native Kubernetes Secrets managed out-of-band to maintain str
 | `sentinelforge-backend-secret` | `ACCESS_TOKEN_EXPIRE_MINUTES` | `backend` | Access token expiration (`15` mins) |
 | `sentinelforge-backend-secret` | `REFRESH_TOKEN_EXPIRE_DAYS` | `backend` | Refresh token expiration (`7` days) |
 
-### 2. Operator Configuration
+#### 2. Operator Configuration
 
 #### Option A: Automated Generation (New Clusters)
 ```bash
@@ -192,13 +274,13 @@ nano .env.secrets
 ./scripts/manage-secrets.sh apply --from-env .env.secrets
 ```
 
-### 3. Verification & Secret Status
+#### 3. Verification & Secret Status
 Verify that all required secrets and keys are properly configured without printing secret values to the terminal:
 ```bash
 ./scripts/manage-secrets.sh status
 ```
 
-### 4. Secret Rotation Procedures
+#### 4. Secret Rotation Procedures
 
 #### Rotating JWT Secret Key (Zero Downtime)
 ```bash
@@ -212,7 +294,7 @@ Verify that all required secrets and keys are properly configured without printi
 ```
 *Updates the password inside PostgreSQL via `ALTER USER`, synchronizes both `sentinelforge-postgres-secret` and `sentinelforge-database-secret`, and restarts the backend without data loss.*
 
-### 5. Security & Leak Auditing
+#### 5. Security & Leak Auditing
 Run the security audit check to verify no credentials have leaked into Git, Dockerfiles, or manifests:
 ```bash
 ./scripts/check-secret-leaks.sh

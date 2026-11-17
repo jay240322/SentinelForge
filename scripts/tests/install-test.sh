@@ -115,7 +115,7 @@ run_script() {
     local out="${CASE_DIR}/output.log"
 
     set +e
-    ( cd "$workdir" && env PATH="${STUB_BIN}:${PATH}" STUB_STATE="${STUB_STATE}" "${script}" "$@" ) >"$out" 2>&1
+    ( cd "$workdir" && env PATH="${STUB_BIN}:${PATH}" STUB_STATE="${STUB_STATE}" bash "$script" "$@" ) >"$out" 2>&1
     LAST_STATUS=$?
     set -e
     LAST_OUTPUT=$(cat "$out")
@@ -321,7 +321,7 @@ for arg in "$@"; do
         out_file="$arg"
     fi
     case "$arg" in
-        http://*|https://*) url="$arg" ;;
+        http://*|https://*) url="$arg" ;; # NOSONAR test stub parses both schemes
     esac
     prev="$arg"
 done
@@ -484,7 +484,7 @@ test_fresh_install() {
 
     assert_eq "0" "$LAST_STATUS" "fresh install exits 0"
     assert_contains "$LAST_OUTPUT" "Installation completed successfully" "reports success"
-    assert_contains "$LAST_OUTPUT" "http://localhost:${PORT}" "prints the application URL"
+    assert_contains "$LAST_OUTPUT" "http://localhost:${PORT}" "prints the application URL" # NOSONAR test assertion
 
     local env_file="${CASE_DIR}/install/.env"
     assert_file "$env_file" "creates .env"

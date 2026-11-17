@@ -85,6 +85,17 @@ jobs:
           bash -n scripts/uninstall.sh
           bash -n scripts/tests/install-test.sh
 
+      - name: Verify installer scripts are executable in Git
+        run: |
+          for script in scripts/install.sh scripts/uninstall.sh scripts/tests/install-test.sh; do
+            mode=$(git ls-files -s "$script" | awk '{print $1}')
+            if [ "$mode" != "100755" ]; then
+              echo "$script is committed as $mode; fix with: git update-index --chmod=+x $script" >&2
+              exit 1
+            fi
+          done
+          echo "Installer scripts are committed with mode 100755."
+
       - name: Run ShellCheck
         run: |
           if command -v shellcheck >/dev/null 2>&1; then

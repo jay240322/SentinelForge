@@ -1161,12 +1161,16 @@ run_migrations() {
 }
 
 verify_backend_health() {
-    local elapsed=0 output
+    local elapsed=0 output health_url
+
+    # Loopback-only probe inside the Compose network. TLS is intentionally
+    # terminated in front of the gateway by the operator, not inside the stack.
+    health_url="http://127.0.0.1:8000/health" # NOSONAR loopback health probe
 
     log_info "Verifying backend health..."
     while :; do
         output=$(compose exec -T backend python -c \
-            'import json, urllib.request; data = json.load(urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=5)); print(data.get("status", "unknown"))' \
+            "import json, urllib.request; data = json.load(urllib.request.urlopen('${health_url}', timeout=5)); print(data.get('status', 'unknown'))" \
             2>/dev/null | tr -d '\r' || true)
 
         if [[ "$output" == *"healthy"* ]]; then
@@ -1258,7 +1262,8 @@ wait_for_gateway_http() {
 print_summary() {
     local host url compose_cmd
     host=$(local_url_host)
-    url="http://${host}:${PORT}"
+    # The gateway is HTTP by default; TLS is expected to terminate in front of it.
+    url="http://${host}:${PORT}" # NOSONAR local gateway URL
     compose_cmd="docker compose -p ${PROJECT} --env-file \"${ENV_FILE}\" -f \"${INSTALL_DIR}/docker-compose.yml\""
 
     cat <<EOF
@@ -1361,7 +1366,8 @@ main() {
 
     log_step "8/8 Verifying the installation"
     verify_backend_health
-    wait_for_gateway_http "http://$(local_url_host):${PORT}"
+    # Loopback-only request to the local gateway (TLS is terminated upstream).
+    wait_for_gateway_http "http://$(local_url_host):${PORT}" # NOSONAR local gateway probe
 
     print_summary
     log_success "Installation completed successfully."
